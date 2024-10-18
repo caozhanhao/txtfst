@@ -15,36 +15,36 @@ namespace txtfst
     inline std::tuple<std::vector<std::string>, size_t> tokenize(std::string_view text)
     {
       size_t error_cnt = 0;
-      auto&& rng =  text
-             | std::views::chunk_by([](char, char c) { return !std::isspace(c); })
-             | std::views::transform([&error_cnt](auto&& str)
-             {
-               return
-                 str
-                 | std::views::chunk_by([](char, char c) { return (0b11000000 & c) == 0b10000000; })
-                 | std::views::filter([&error_cnt](auto&& codepoint)
-                 {
-                   if ((codepoint.size() == 1 && (codepoint[0] & 0b10000000) != 0)
-                       || (codepoint.size() == 2 && (codepoint[0] & 0b11100000) != 0b11000000)
-                       || (codepoint.size() == 3 && (codepoint[0] & 0b11110000) != 0b11100000)
-                       || (codepoint.size() == 4 && (codepoint[0] & 0b11111000) != 0b11110000)
-                       || codepoint.size() > 4
-                       || codepoint.size() == 0)
+      auto&& rng = text
+                   | std::views::chunk_by([](char, char c) { return !std::isspace(c); })
+                   | std::views::transform([&error_cnt](auto&& str)
                    {
-                     ++error_cnt;
-                     return false;
-                   }
-                   return codepoint.size() == 1 && std::isalnum(codepoint[0]);
-                 })
-                 | std::views::transform([](auto&& codepoint) -> char
-                 {
-                   return std::tolower(codepoint[0]);
-                 });
-             });
+                     return
+                         str
+                         | std::views::chunk_by([](char, char c) { return (0b11000000 & c) == 0b10000000; })
+                         | std::views::filter([&error_cnt](auto&& codepoint)
+                         {
+                           if ((codepoint.size() == 1 && (codepoint[0] & 0b10000000) != 0)
+                               || (codepoint.size() == 2 && (codepoint[0] & 0b11100000) != 0b11000000)
+                               || (codepoint.size() == 3 && (codepoint[0] & 0b11110000) != 0b11100000)
+                               || (codepoint.size() == 4 && (codepoint[0] & 0b11111000) != 0b11110000)
+                               || codepoint.size() > 4
+                               || codepoint.size() == 0)
+                           {
+                             ++error_cnt;
+                             return false;
+                           }
+                           return codepoint.size() == 1 && std::isalnum(codepoint[0]);
+                         })
+                         | std::views::transform([](auto&& codepoint) -> char
+                         {
+                           return std::tolower(codepoint[0]);
+                         });
+                   });
       std::vector<std::string> ret{""};
-      for(auto&& i : rng)
+      for (auto&& i : rng)
       {
-        for(auto&& j : i)
+        for (auto&& j : i)
         {
           ret.back() += j;
         }

@@ -56,16 +56,16 @@ namespace txtfst
   template<std::integral Output>
   struct FST
   {
-    std::vector<State<Output>> states;
+    std::vector<State<Output> > states;
 
     std::optional<Output> get(const std::string& word) const
     {
       Output output = 0;
       const State<Output>* curr = &states[0];
-      for(auto& ch : word)
+      for (auto& ch : word)
       {
         auto it = std::ranges::find(curr->trans, ch, [](auto&& t) { return t.label; });
-        if(it == curr->trans.cend())
+        if (it == curr->trans.cend())
           return std::nullopt;
         output += it->output;
         curr = &states[it->id];
@@ -159,9 +159,9 @@ namespace txtfst
         auto suffix = prev_output - prefix;
         prev_output = prefix;
 
-        if(suffix != 0)
+        if (suffix != 0)
         {
-          for(auto&& arc : frontier[i]->trans)
+          for (auto&& arc : frontier[i]->trans)
           {
             arc.output += suffix;
           }
@@ -194,14 +194,14 @@ namespace txtfst
       frontier.clear();
 
 
-      std::vector<State<Output>> ret;
-      for(auto&& ptr : freezed)
+      std::vector<State<Output> > ret;
+      for (auto&& ptr : freezed)
       {
         assert(ptr != nullptr);
         ret.emplace_back(std::move(*ptr));
       }
       freezed.clear();
-      std::ranges::sort(ret, std::less{}, [](auto&& r){return r.id;});
+      std::ranges::sort(ret, std::less{}, [](auto&& r) { return r.id; });
       return FST<Output>{ret};
     }
 

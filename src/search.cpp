@@ -3,12 +3,12 @@
 
 #include "txtfst/index.h"
 
-int main(int argc, char **argv)
+int main(int argc, char** argv)
 {
-    if(argc != 4)
+    if (argc != 4)
     {
         std::println(std::cerr,
-            "Usage: {} [path to index] [options] [token]", argv[0]);
+                     "Usage: {} [path to index] [options] [token]", argv[0]);
         std::println(std::cerr, "Options:");
         std::println(std::cerr, "   -t, --title       Search in title");
         std::println(std::cerr, "   -c, --content     Search in content");
@@ -19,11 +19,11 @@ int main(int argc, char **argv)
     std::string option = argv[2];
     std::string token = argv[3];
     bool search_title = false;
-    if(option == "-t" || option == "--title")
+    if (option == "-t" || option == "--title")
     {
         search_title = true;
     }
-    else if(option == "-c" || option == "--content")
+    else if (option == "-c" || option == "--content")
     {
         search_title = false;
     }
@@ -34,7 +34,7 @@ int main(int argc, char **argv)
     }
 
     std::ifstream ifs(path_to_index, std::ios::binary);
-    if(ifs.fail())
+    if (ifs.fail())
     {
         std::println(std::cerr, "Failed to open index.");
         return -1;
@@ -47,9 +47,9 @@ int main(int argc, char **argv)
     std::vector<std::string> result;
 
     std::string search_token;
-    for(auto&& r : token)
+    for (auto&& r : token)
         search_token += static_cast<char>(std::tolower(r));
-    if(search_title)
+    if (search_title)
         result = index.search_title(search_token);
     else
         result = index.search_content(search_token);

@@ -54,7 +54,7 @@
 	29, 28, 27, 26, 25, 24, 23, 22, 21, 20, \
 	19, 18, 17, 16, 15, 14, 13, 12, 11, 10, \
 	 9,  8,  7,  6,  5,  4,  3,  2,  1,  0))
-  
+
 #define PACKME_ARG_EXPAND_1(f,t,...)  f(t)
 #define PACKME_ARG_EXPAND_2(f,t,...)  PACKME_MARCO_EXPAND(PACKME_ARG_EXPAND_1(f,__VA_ARGS__)) ,f(t)
 #define PACKME_ARG_EXPAND_3(f,t,...)  PACKME_MARCO_EXPAND(PACKME_ARG_EXPAND_2(f,__VA_ARGS__)) ,f(t)
@@ -119,13 +119,13 @@
 #define PACKME_ARG_EXPAND_62(f,t,...) PACKME_MARCO_EXPAND(PACKME_ARG_EXPAND_61(f,__VA_ARGS__)),f(t)
 #define PACKME_ARG_EXPAND_63(f,t,...) PACKME_MARCO_EXPAND(PACKME_ARG_EXPAND_62(f,__VA_ARGS__)),f(t)
 #define PACKME_ARG_EXPAND_64(f,t,...) PACKME_MARCO_EXPAND(PACKME_ARG_EXPAND_63(f,__VA_ARGS__)),f(t)
-   
+
 #define PACKME_CONCAT_(l, r) l ## r
 #define PACKME_CONCAT(l, r) PACKME_CONCAT_(l, r)
 
 #define PACKME_EXPAND_(func,...) \
 		PACKME_MARCO_EXPAND(PACKME_CONCAT(PACKME_ARG_EXPAND_, PACKME_ARG_COUNT(__VA_ARGS__))(func, __VA_ARGS__))
-  
+
 #define PACKME_EXPAND(func,...) \
     PACKME_EXPAND_(func, __VA_ARGS__)
 
@@ -207,10 +207,10 @@ namespace packme
 {
   template<typename T>
   std::decay_t<T> unpack(const std::string &str);
-  
+
   template<typename T>
   std::string pack(const T &item);
-  
+
   namespace details
   {
     template<typename... List>
@@ -218,7 +218,7 @@ namespace packme
     struct TypeListError {};
     template<typename... List>
     std::tuple<List...> as_tuple(TypeList<List...>);
-  
+
     template<typename List, typename NewElement>
     struct push_back;
     template<typename... elems, typename new_elem>
@@ -228,7 +228,7 @@ namespace packme
     };
     template<typename List, typename new_elem>
     using push_back_t = typename push_back<List, new_elem>::type;
-  
+
     template<typename List>
     struct is_empty
     {
@@ -241,7 +241,7 @@ namespace packme
     };
     template<typename List>
     constexpr bool is_empty_v = is_empty<List>::value;
-  
+
     template<typename List>
     struct front;
     template<typename First, typename ...Rest>
@@ -251,7 +251,7 @@ namespace packme
     };
     template<typename List>
     using front_t = typename front<List>::type;
-  
+
     template<typename List>
     struct pop_front;
     template<typename First, typename ...Rest>
@@ -261,7 +261,7 @@ namespace packme
     };
     template<typename List>
     using pop_front_t = typename pop_front<List>::type;
-  
+
     template<typename List, bool Empty = is_empty_v<List>>
     struct reverse;
     template<typename List>
@@ -273,7 +273,7 @@ namespace packme
     };
     template<typename List>
     using reverse_t = typename reverse<List>::type;
-  
+
     template<typename T>
     struct CustomTypeHelper{
       using tuple_type = typename T::packme_tuple_type;
@@ -284,29 +284,29 @@ namespace packme
         return std::get<index>(tuple);
       }
     };
-    
+
     struct Any
     {
       template<typename T>
       operator T();
     };
-    
+
     template<typename T, template<typename...> typename Primary>
     struct is_specialization_of : public std::false_type {};
     template<template<typename...> typename Primary, typename... Args>
     struct is_specialization_of<Primary<Args...>, Primary> : public std::true_type {};
     template<typename T, template<typename...> typename Primary>
     constexpr bool is_specialization_of_v = is_specialization_of<T, Primary>::value;
-    
+
     template<typename T>
     constexpr bool is_map_v = is_specialization_of_v<T, std::map>;
-    
+
     template<typename T>
     constexpr bool is_serializable_tuple_like_v =
         (is_specialization_of_v<T, std::pair>
         || is_specialization_of_v<T, std::tuple>)
            && std::is_default_constructible_v<T>;
-    
+
     template<typename T>
     requires std::is_aggregate_v<std::remove_cvref_t<T>> || is_serializable_tuple_like_v<std::remove_cvref_t<T>>
     consteval auto field_num(auto &&... args)
@@ -327,7 +327,7 @@ namespace packme
         }
       }
     }
-    
+
     template<typename T, typename Fn>
     requires std::is_aggregate_v<std::remove_cvref_t<T>> || is_serializable_tuple_like_v<std::remove_cvref_t<T>>
     constexpr auto field_for_each(T &&t, Fn &&fn)
@@ -402,7 +402,7 @@ namespace packme
         static_assert(num <= 64, "too many fields");
       }
     }
-    
+
     struct not_implemented_tag {};
     struct trivially_copy_tag {};
     struct pointer_tag {};
@@ -414,14 +414,14 @@ namespace packme
     struct array_tag {};
     struct struct_tag {};
     struct custom_tag {};
-  
+
     template<typename T>
     concept CustomType =
     requires(T value)
     {
       { value.packme_make_tuple() };
     };
-    
+
     template<typename BeginIt, typename EndIt>
     concept ItRange =
     requires(BeginIt begin_it, EndIt end_it)
@@ -431,7 +431,7 @@ namespace packme
       requires !std::is_void_v<decltype(*begin_it)>;
       { begin_it != end_it };
     };
-    
+
     template<typename T>
     concept Container =
     requires(T value)
@@ -441,7 +441,7 @@ namespace packme
       requires ItRange<decltype(std::begin(value)), decltype(std::end(
           value))>;
     };
-    
+
     template<typename T>
     concept SerializableContainer =
     Container<T> &&
@@ -450,31 +450,31 @@ namespace packme
       { value.insert(std::end(value), std::declval<decltype(*std::begin(value))>()) };
       requires std::is_default_constructible_v<T>;
     };
-  
+
     template<typename T, typename U = void>
     struct is_custom_type : public std::false_type {};
     template<typename T> requires CustomType<T>
     struct is_custom_type<T> : public std::true_type {};
     template<typename T>
     constexpr bool is_custom_type_v = is_custom_type<T>::value;
-    
+
     template<typename T, typename U = void>
     struct is_container : public std::false_type {};
     template<typename T> requires Container<T>
     struct is_container<T> : public std::true_type {};
     template<typename T>
     constexpr bool is_container_v = is_container<T>::value;
-    
+
     template<typename T, typename U = void>
     struct is_serializable_container : public std::false_type {};
     template<typename T> requires SerializableContainer<T>
     struct is_serializable_container<T> : public std::true_type {};
     template<typename T>
     constexpr bool is_serializable_container_v = is_serializable_container<T>::value;
-    
+
     template<typename T>
     constexpr bool is_serializable_struct_v = !is_container_v<T> && std::is_aggregate_v<T> && std::is_default_constructible_v<T>;
-    
+
     template<typename T>
     auto dispatch_tag()
     {
@@ -491,16 +491,16 @@ namespace packme
       else if constexpr(std::is_default_constructible_v<R> && std::is_trivially_copyable_v<R>) return trivially_copy_tag{};
       else return not_implemented_tag{};
     }
-    
+
     template<typename T, typename Tag>
     constexpr bool tag_is = std::is_same_v<decltype(dispatch_tag<T>()), Tag>;
-    
+
     template<typename T>
     std::string internal_pack(not_implemented_tag, const T &item);
-  
+
     template<typename T>
     T internal_unpack(not_implemented_tag, const std::string &str);
-    
+
     template<typename T>
     std::string internal_pack(int_tag, const T &item)
     {
@@ -531,7 +531,7 @@ namespace packme
         return internal_pack(trivially_copy_tag{}, item);
       }
     }
-    
+
     template<typename T>
     T internal_unpack(int_tag, const std::string &str)
     {
@@ -559,19 +559,19 @@ namespace packme
         return internal_unpack<T>(trivially_copy_tag{}, str);
       }
     }
-    
+
     template<typename T>
     std::string internal_pack(enum_tag, const T &item)
     {
       return internal_pack(int_tag{}, static_cast<std::underlying_type_t<std::remove_cvref_t<T>>>(item));
     }
-    
+
     template<typename T>
     T internal_unpack(enum_tag, const std::string &str)
     {
       return static_cast<T>(internal_unpack<std::underlying_type_t<std::remove_cvref_t<T>>>(int_tag{}, str));
     }
-    
+
     template<typename T>
     std::string internal_pack(trivially_copy_tag, const T &item)
     {
@@ -579,7 +579,7 @@ namespace packme
       std::memcpy(data.data(), &item, sizeof(T));
       return data;
     }
-    
+
     template<typename T>
     T internal_unpack(trivially_copy_tag, const std::string &str)
     {
@@ -587,19 +587,19 @@ namespace packme
       std::memcpy(&item, str.data(), sizeof(T));
       return item;
     }
-    
+
     template<typename T>
     std::string internal_pack(string_tag, const T &item)
     {
       return item;
     }
-  
+
     template<typename T>
     T internal_unpack(string_tag, const std::string &str)
     {
       return str;
     }
-    
+
     template<typename T>
     std::string internal_pack(map_tag, const T &item)
     {
@@ -609,7 +609,7 @@ namespace packme
         v.emplace_back(r);
       return pack(v);
     }
-  
+
     template<typename T>
     T internal_unpack(map_tag, const std::string &str)
     {
@@ -620,7 +620,7 @@ namespace packme
         ret.emplace_hint(ret.end(), std::move(r));
       return ret;
     }
-    
+
     template<typename T>
     void item_pack_helper(std::string &buf, size_t &pos, const T &item)
     {
@@ -636,18 +636,18 @@ namespace packme
       else
       {
         auto data = pack<T>(static_cast<T>(const_cast<std::remove_const_t<decltype(item)>>(item)));
-        
+
         auto data_size = internal_pack(int_tag{}, data.size());
         if (buf.size() - pos < data.size() + data_size.size())
           buf.resize(buf.size() + data.size() + data_size.size() + 64);
-        
+
         for (size_t i = 0; i < data_size.size(); ++i, ++pos)
           buf[pos] = data_size[i];
         for (size_t i = 0; i < data.size(); ++i, ++pos)
           buf[pos] = data[i];
       }
     }
-    
+
     template<typename T>
     auto item_unpack_helper(const std::string &str, size_t &pos)
     {
@@ -669,7 +669,7 @@ namespace packme
         }
         std::string buf = str.substr(pos, int_size);
         pos += int_size;
-        
+
         if constexpr(tag_is<T, int_tag> || tag_is<T, enum_tag>)
         {
           return unpack<std::remove_cvref_t<T>>(buf);
@@ -683,7 +683,7 @@ namespace packme
         }
       }
     }
-    
+
     template<typename T>
     std::string internal_pack(container_tag, const T &item)
     {
@@ -693,7 +693,7 @@ namespace packme
         item_pack_helper(buf, pos, r);
       return buf.substr(0, pos);
     }
-    
+
     template<typename T>
     T internal_unpack(container_tag, const std::string &str)
     {
@@ -706,7 +706,7 @@ namespace packme
       }
       return ret;
     }
-    
+
     template<typename T>
     std::string internal_pack(struct_tag, const T &item)
     {
@@ -715,7 +715,7 @@ namespace packme
       field_for_each(item, [&buf, &pos](auto &&r) { item_pack_helper(buf, pos, r); });
       return buf.substr(0, pos);
     }
-    
+
     template<typename T>
     T internal_unpack(struct_tag, const std::string &str)
     {
@@ -725,13 +725,13 @@ namespace packme
       field_for_each(ret, [&str, &pos](auto &&r) { r = std::move(item_unpack_helper<decltype(r)>(str, pos)); });
       return ret;
     }
-  
+
     template<typename T>
     std::string internal_pack(pointer_tag, const T &item)
     {
       return pack(*item);
     }
-  
+
     template<typename T>
     T internal_unpack(pointer_tag, const std::string &str)
     {
@@ -740,7 +740,7 @@ namespace packme
       *item = unpack<value_type>(str);
       return item;
     }
-  
+
     template<typename T>
     std::string internal_pack(array_tag, const T &item)
     {
@@ -751,7 +751,7 @@ namespace packme
         item_pack_helper(buf, pos, item[i]);
       return buf.substr(0, pos);
     }
-  
+
     template<typename T>
     std::decay_t<T> internal_unpack(array_tag, const std::string &str)
     {
@@ -764,13 +764,13 @@ namespace packme
       }
       return ret;
     }
-  
+
     template<typename T>
     std::string internal_pack(custom_tag, const T &item)
     {
       return internal_pack(struct_tag{}, item.packme_make_tuple());
     }
-  
+
     template<typename T>
     T internal_unpack(custom_tag, const std::string &str)
     {
@@ -778,7 +778,7 @@ namespace packme
       return ret;
     }
   }
-  
+
   template<typename T>
   std::string pack(const T &item)
   {
@@ -786,8 +786,8 @@ namespace packme
                   "Please add PACKME_FIELDS(typename, field1, field2, ...)");
     return details::internal_pack<T>(details::dispatch_tag<T>(), item);
   }
-  
-  
+
+
   template<typename T>
   std::decay_t<T> unpack(const std::string &str)
   {
