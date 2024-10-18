@@ -26,7 +26,8 @@ namespace txtfst
 
   struct Index
   {
-    std::vector<std::string> book_pathes; // store all the book pathes
+    std::vector<std::string> names;  // store all the names
+    std::vector<std::vector<size_t>> book_pathes; // store all the book pathes
     FST<uint32_t> fst; // store all the tokens
     std::vector<Entry> entries; // unique to a token
 
@@ -40,7 +41,11 @@ namespace txtfst
         for (auto& r : sorted_books)
         {
           if (r.title_freq == 0) break;
-          ret.emplace_back(book_pathes[r.idx]);
+          std::string path;
+          for(auto&& name_idx : book_pathes[r.idx])
+            path += names[name_idx] + "/";
+          path.pop_back();
+          ret.emplace_back(path);
         }
       }
       return ret;
@@ -56,7 +61,11 @@ namespace txtfst
         for (auto& r : sorted_books)
         {
           if (r.content_freq == 0) break;
-          ret.emplace_back(book_pathes[r.idx]);
+          std::string path;
+          for(auto&& name_idx : book_pathes[r.idx])
+            path += names[name_idx] + "/";
+          path.pop_back();
+          ret.emplace_back(path);
         }
       }
       return ret;
@@ -65,7 +74,8 @@ namespace txtfst
 
   class IndexBuilder
   {
-    std::vector<std::string> book_pathes;
+    std::vector<std::string> names;
+    std::vector<std::vector<size_t>> book_pathes;
     std::vector<Entry> merged_entries;
     std::map<std::string, Entry> unmerged_tokens;
     FSTBuilder<uint32_t> fst_builder;
@@ -75,7 +85,20 @@ namespace txtfst
                            const std::vector<std::string>& title,
                            const std::vector<std::string>& content)
     {
-      book_pathes.emplace_back(path);
+      book_pathes.emplace_back();
+      for(auto&& name : path | std::views::split('/'))
+      {
+        auto sv = std::string_view{name};
+        auto it = std::ranges::find(names, sv);
+        if(it == names.end())
+        {
+          names.emplace_back(sv);
+          book_pathes.back().emplace_back(names.size() - 1);
+        }
+        else
+          book_pathes.back().emplace_back(it - names.cbegin());
+      }
+
       auto curr_book = book_pathes.size() - 1;
       for (auto&& token : title)
       {
@@ -108,7 +131,7 @@ namespace txtfst
         fst_builder.add(r.first, merged_entries.size());
         merged_entries.emplace_back(r.second);
       }
-      return Index{book_pathes, fst_builder.build(), merged_entries};
+      return Index{names, book_pathes, fst_builder.build(), merged_entries};
     }
   };
 }

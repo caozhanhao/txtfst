@@ -1,19 +1,28 @@
 # TXTFST
 
-A txt index for a task in CNSS Recruit 2024.
+A txt searcher for a task in CNSS Recruit 2024.
 
 ## Documentation
 
 ### txtfst-build
 
 ```shell
-
+Usage: ./txtfst-build [path to index] [path to library]
 ```
 
 ### txtfst-search
 
 ```shell
+Usage: ./txtfst-search [path to index] [options] [tokens]
+Options:
+   -t, --title       Search in title
+   -c, --content     Search in content
+```
 
+##### Example
+```shell
+txtfst-build book.idx ./book/
+txtfst-search book.idx cnss meaning sentence
 ```
 
 ## Task

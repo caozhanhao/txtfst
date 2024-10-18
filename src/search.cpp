@@ -5,10 +5,10 @@
 
 int main(int argc, char** argv)
 {
-    if (argc != 4)
+    if (argc < 4)
     {
         std::println(std::cerr,
-                     "Usage: {} [path to index] [options] [token]", argv[0]);
+                     "Usage: {} [path to index] [options] [tokens]", argv[0]);
         std::println(std::cerr, "Options:");
         std::println(std::cerr, "   -t, --title       Search in title");
         std::println(std::cerr, "   -c, --content     Search in content");
@@ -17,7 +17,15 @@ int main(int argc, char** argv)
 
     std::string path_to_index = argv[1];
     std::string option = argv[2];
-    std::string token = argv[3];
+    std::vector<std::string> tokens{""};
+    for(int i = 3; i < argc; ++i)
+    {
+        for(size_t j = 0; argv[i][j] != '\0'; ++j)
+            tokens.back() += static_cast<char>(std::tolower(argv[i][j]));
+        tokens.emplace_back("");
+    }
+    tokens.pop_back();
+
     bool search_title = false;
     if (option == "-t" || option == "--title")
     {
@@ -44,19 +52,26 @@ int main(int argc, char** argv)
     ifs.seekg(0, std::ios::beg).read(buf.data(), static_cast<std::streamsize>(buf.size()));
     ifs.close();
     auto index = packme::unpack<txtfst::Index>(buf);
-    std::vector<std::string> result;
 
-    std::string search_token;
-    for (auto&& r : token)
-        search_token += static_cast<char>(std::tolower(r));
-    if (search_title)
-        result = index.search_title(search_token);
-    else
-        result = index.search_content(search_token);
-
-    for (auto&& r : result)
+    for(auto&& token : tokens)
     {
-        std::println(std::cout, "{}", r);
+        std::vector<std::string> result;
+        if (search_title)
+            result = index.search_title(token);
+        else
+            result = index.search_content(token);
+        if(!result.empty())
+        {
+            std::println(std::cout, "{}:", token);
+            for (auto&& r : result)
+            {
+                std::println(std::cout, "{}", r);
+            }
+        }
+        else
+        {
+            std::println(std::cout, "{} not found.", token);
+        }
     }
     return 0;
 }
