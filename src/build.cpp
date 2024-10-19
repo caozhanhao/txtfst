@@ -8,6 +8,9 @@
 #include "txtfst/index.h"
 #include "txtfst/fst.h"
 
+constexpr size_t BUILD_WORKER = 16;
+constexpr size_t BUILDER_CHUNK_SIZE = 20000;
+
 void print_usage(char** argv)
 {
   std::println(std::cerr, "Usage: {} [path to index] [path to library] [options]", argv[0]);
@@ -89,64 +92,85 @@ int main(int argc, char** argv)
     if (entry.is_regular_file() && entry.path().extension() == ".txt")
       pathes.emplace_back(entry.path());
 
-  txtfst::IndexBuilder builder;
+  const size_t nwork = pathes.size() / BUILD_WORKER;
+  std::array<std::thread, BUILD_WORKER> workers;
+  std::array<txtfst::IndexBuilder, BUILD_WORKER + 1> builders;
   std::mutex output_mtx;
   std::atomic<size_t> completed(0);
+  std::atomic<size_t> curr_chunk(0);
 
   auto add_book = [&, total = pathes.size()]
-  (const std::string& path)
+  (const std::string& path, txtfst::IndexBuilder& builder)
   {
     auto [title, content, errcnt]
         = txtfst::tokenize_book(path, filter, use_checked_tokenizer);
-    std::lock_guard l(output_mtx);
     if (errcnt == 1)
     {
+      std::lock_guard l(output_mtx);
       std::println(std::cerr,
                    "WARNING: In file '{}', {} invalid UTF-8 codepoint was ignored.",
                    path, errcnt);
     }
     else if (errcnt > 0)
     {
+      std::lock_guard l(output_mtx);
       std::println(std::cerr,
                    "WARNING: In file '{}', {} invalid UTF-8 codepoints were ignored.",
                    path, errcnt);
     }
     builder.add_book(path, title, content);
     ++completed;
+    if (++curr_chunk > BUILDER_CHUNK_SIZE)
+    {
+      auto idx = packme::pack(builder.build());
+      uint64_t idx_size = idx.size();
+      output_mtx.lock();
+      ofs.write(reinterpret_cast<char*>(&idx_size), sizeof(uint64_t));
+      ofs.write(idx.data(), static_cast<std::streamsize>(idx.size()));
+      output_mtx.unlock();
+      builder = txtfst::IndexBuilder{};
+      curr_chunk = 0;
+    }
     std::print(std::cout, "\x1b[80D\x1b[K{}/{}", completed.load(), total);
   };
 
-  constexpr size_t NWORKER = 16;
-  const size_t nwork = pathes.size() / NWORKER;
-  std::array<std::thread, NWORKER> workers;
-  for (size_t i = 0; i < NWORKER; ++i)
+  for (size_t i = 0; i < BUILD_WORKER; ++i)
   {
     workers[i] = std::thread{
-      [i, nwork, &add_book, &pathes]
+      [i, nwork, &add_book, &pathes, &builders]
       {
         for (size_t j = i * nwork; j < (i + 1) * nwork; ++j)
-          add_book(pathes[j]);
+          add_book(pathes[j], builders[i]);
       }
     };
   }
 
-  for (size_t i = NWORKER * nwork; i < pathes.size(); ++i)
+  for (size_t i = BUILD_WORKER * nwork; i < pathes.size(); ++i)
   {
-    add_book(pathes[i]);
+    add_book(pathes[i], builders[BUILD_WORKER]);
     if (auto curr = completed.fetch_add(1); curr % 500 == 0)
       std::print(std::cout, "\x1b[80D\x1b[K{}/{}", curr, pathes.size());
   }
 
-  for (size_t i = 0; i < NWORKER; ++i)
+  for (size_t i = 0; i < BUILD_WORKER; ++i)
   {
     if (workers[i].joinable())
       workers[i].join();
   }
 
+  for (size_t i = 0; i < BUILD_WORKER + 1; ++i)
+  {
+    auto idx = packme::pack(builders[i].build());
+    if (!idx.empty())
+    {
+      uint64_t idx_size = idx.size();
+      ofs.write(reinterpret_cast<char*>(&idx_size), sizeof(uint64_t));
+      ofs.write(idx.data(), static_cast<std::streamsize>(idx.size()));
+    }
+  }
+
   std::print(std::cout, "\x1b[80D\x1b[K{}/{}\n", pathes.size(), pathes.size());
 
-  auto idx = builder.build();
-  ofs << packme::pack(idx);
   ofs.close();
   return 0;
 }

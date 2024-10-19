@@ -128,9 +128,12 @@ namespace txtfst
         std::vector<Entry::BookEntry> book_entries;
         for (auto&& t : r.second)
           book_entries.emplace_back(t.second);
-        merged_entries.emplace_back(book_entries);
+        merged_entries.emplace_back(std::move(book_entries));
       }
-      return Index{names, book_pathes, fst_builder.build(), merged_entries};
+      return Index{
+        std::move(names), std::move(book_pathes),
+        fst_builder.build(), std::move(merged_entries)
+      };
     }
   };
 }

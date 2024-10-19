@@ -1,7 +1,11 @@
 #include <iostream>
 #include <fstream>
+#include <thread>
+#include <mutex>
 
 #include "txtfst/index.h"
+
+constexpr size_t SEARCH_WORKER = 16;
 
 void print_usage(char** argv)
 {
@@ -57,15 +61,98 @@ int main(int argc, char** argv)
     buf.resize(ifs.seekg(0, std::ios::end).tellg());
     ifs.seekg(0, std::ios::beg).read(buf.data(), static_cast<std::streamsize>(buf.size()));
     ifs.close();
-    auto index = packme::unpack<txtfst::Index>(buf);
+
+    std::string_view indexdata{buf};
+
+    std::vector<std::string_view> packed;
+    for (size_t i = 0; i < indexdata.size();)
+    {
+        uint64_t size;
+        std::memcpy(&size, indexdata.data() + i, sizeof(uint64_t));
+        packed.emplace_back(indexdata.substr(i + sizeof(uint64_t), size));
+        i += size + sizeof(uint64_t);
+    }
+
+    std::vector<txtfst::Index> indexes;
+    std::mutex add_mtx;
+    const size_t nwork = packed.size() / SEARCH_WORKER;
+    std::array<std::thread, SEARCH_WORKER> workers;
+
+    for (size_t i = 0; i < SEARCH_WORKER; ++i)
+    {
+        workers[i] = std::thread{
+            [nwork, i, &packed, &add_mtx, &indexes]
+            {
+                for (size_t j = i * nwork; j < (i + 1) * nwork; ++j)
+                {
+                    auto unpacked = packme::unpack<txtfst::Index>(packed[j]);
+                    add_mtx.lock();
+                    indexes.emplace_back(unpacked);
+                    add_mtx.unlock();
+                }
+            }
+        };
+    }
+
+    for (size_t i = SEARCH_WORKER * nwork; i < packed.size(); ++i)
+    {
+        auto unpacked = packme::unpack<txtfst::Index>(packed[i]);
+        add_mtx.lock();
+        indexes.emplace_back(unpacked);
+        add_mtx.unlock();
+    }
+
+    for (size_t i = 0; i < SEARCH_WORKER; ++i)
+    {
+        if (workers[i].joinable())
+            workers[i].join();
+    }
 
     for (auto&& token : tokens)
     {
         std::vector<std::string> result;
-        if (search_title)
-            result = index.search_title(token);
-        else
-            result = index.search_content(token);
+        for (auto&& index : indexes)
+        {
+            auto do_search = [&result, &search_title, &token, &add_mtx](const txtfst::Index& index)
+            {
+                if (search_title)
+                {
+                    auto a = index.search_title(token);
+                    add_mtx.lock();
+                    result.insert(result.end(), std::make_move_iterator(a.begin()),
+                                  std::make_move_iterator(a.end()));
+                    add_mtx.unlock();
+                }
+                else
+                {
+                    auto a = index.search_content(token);
+                    add_mtx.lock();
+                    result.insert(result.end(), std::make_move_iterator(a.begin()),
+                                  std::make_move_iterator(a.end()));
+                    add_mtx.unlock();
+                }
+            };
+            for (size_t i = 0; i < SEARCH_WORKER; ++i)
+            {
+                workers[i] = std::thread{
+                    [nwork, i, &indexes, &do_search]
+                    {
+                        for (size_t j = i * nwork; j < (i + 1) * nwork; ++j)
+                            do_search(indexes[j]);
+                    }
+                };
+            }
+
+            for (size_t i = SEARCH_WORKER * nwork; i < packed.size(); ++i)
+                do_search(indexes[i]);
+
+            for (size_t i = 0; i < SEARCH_WORKER; ++i)
+            {
+                if (workers[i].joinable())
+                    workers[i].join();
+            }
+        }
+
         if (!result.empty())
         {
             std::println(std::cout, "{}:", token);
