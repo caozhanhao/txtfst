@@ -12,47 +12,61 @@ namespace txtfst
 {
   namespace details
   {
-    inline std::tuple<std::vector<std::string>, size_t> tokenize(std::string_view text)
+    inline std::tuple<std::vector<std::string>, size_t> tokenize(std::string_view text, int filiter)
     {
       size_t error_cnt = 0;
-      auto&& rng = text
-                   | std::views::chunk_by([](char, char c) { return !std::isspace(c); })
-                   | std::views::transform([&error_cnt](auto&& str)
-                   {
-                     return
-                         str
-                         | std::views::chunk_by([](char, char c) { return (0b11000000 & c) == 0b10000000; })
-                         | std::views::filter([&error_cnt](auto&& codepoint)
-                         {
-                           if ((codepoint.size() == 1 && (codepoint[0] & 0b10000000) != 0)
-                               || (codepoint.size() == 2 && (codepoint[0] & 0b11100000) != 0b11000000)
-                               || (codepoint.size() == 3 && (codepoint[0] & 0b11110000) != 0b11100000)
-                               || (codepoint.size() == 4 && (codepoint[0] & 0b11111000) != 0b11110000)
-                               || codepoint.size() > 4
-                               || codepoint.size() == 0)
-                           {
-                             ++error_cnt;
-                             return false;
-                           }
-                           return codepoint.size() == 1 && std::isalnum(codepoint[0]);
-                         })
-                         | std::views::transform([](auto&& codepoint) -> char
-                         {
-                           return std::tolower(codepoint[0]);
-                         });
-                   });
+      auto&& valid_utf8 = text
+                          | std::views::chunk_by([](char, char c) { return (0b11000000 & c) == 0b10000000; })
+                          | std::views::filter([&error_cnt](auto&& codepoint)
+                          {
+                            if ((codepoint.size() == 1 && (codepoint[0] & 0b10000000) != 0)
+                                || (codepoint.size() == 2 && (codepoint[0] & 0b11100000) != 0b11000000)
+                                || (codepoint.size() == 3 && (codepoint[0] & 0b11110000) != 0b11100000)
+                                || (codepoint.size() == 4 && (codepoint[0] & 0b11111000) != 0b11110000)
+                                || codepoint.size() > 4
+                                || codepoint.size() == 0)
+                            {
+                              ++error_cnt;
+                              return false;
+                            }
+                            return true;
+                          });
+
       std::vector<std::string> ret{""};
-      for (auto&& i : rng)
+      for (auto&& codepoint : valid_utf8)
       {
-        for (auto&& j : i)
+        if (codepoint.size() == 1 && std::isalnum(codepoint[0]))
+          ret.back() += static_cast<char>(std::tolower(codepoint[0]));
+        else if (!ret.back().empty())
         {
-          ret.back() += j;
+          if (filiter != -1 && ret.back().size() < filiter)
+            ret.back().clear();
+          else
+            ret.emplace_back("");
         }
-        if (!ret.back().empty())
-          ret.emplace_back("");
       }
       ret.pop_back();
       return {ret, error_cnt};
+    }
+
+    inline std::vector<std::string> unchecked_tokenize(std::string_view text, int filiter)
+    {
+      std::vector<std::string> ret{""};
+      for (auto&& r : text)
+      {
+        if (std::isalnum(r))
+          ret.back() += static_cast<char>(std::tolower(r));
+        else if (!ret.back().empty())
+        {
+          if (filiter != -1 && ret.back().size() < filiter)
+            ret.back().clear();
+          else
+            ret.emplace_back("");
+        }
+      }
+      if (ret.back().empty())
+        ret.pop_back();
+      return ret;
     }
   }
 
@@ -63,7 +77,7 @@ namespace txtfst
     size_t error_cnt{0};
   };
 
-  inline Book tokenize_book(const std::string& path)
+  inline Book tokenize_book(const std::string& path, int filiter, bool check)
   {
     std::ifstream ifs(path);
     assert(!ifs.fail());
@@ -78,8 +92,16 @@ namespace txtfst
     auto a = buf.find('\n');
     assert(a != std::string::npos);
     size_t content_ecnt = 0;
-    std::tie(book.title, book.error_cnt) = details::tokenize(text.substr(0, a));
-    std::tie(book.content, content_ecnt) = details::tokenize(text.substr(a));
+    if (check)
+    {
+      std::tie(book.title, book.error_cnt) = details::tokenize(text.substr(0, a), filiter);
+      std::tie(book.content, content_ecnt) = details::tokenize(text.substr(a), filiter);
+    }
+    else
+    {
+      book.title = details::unchecked_tokenize(text.substr(0, a), filiter);
+      book.content = details::unchecked_tokenize(text.substr(a), filiter);
+    }
     book.error_cnt += content_ecnt;
 
     return book;

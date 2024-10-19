@@ -3,24 +3,29 @@
 
 #include "txtfst/index.h"
 
+void print_usage(char** argv)
+{
+    std::println(std::cerr,
+                 "Usage: {} [path to index] [options] [tokens]", argv[0]);
+    std::println(std::cerr, "Options:");
+    std::println(std::cerr, "   -t, --title       Search in title");
+    std::println(std::cerr, "   -c, --content     Search in content");
+}
+
 int main(int argc, char** argv)
 {
     if (argc < 4)
     {
-        std::println(std::cerr,
-                     "Usage: {} [path to index] [options] [tokens]", argv[0]);
-        std::println(std::cerr, "Options:");
-        std::println(std::cerr, "   -t, --title       Search in title");
-        std::println(std::cerr, "   -c, --content     Search in content");
+        print_usage(argv);
         return -1;
     }
 
     std::string path_to_index = argv[1];
     std::string option = argv[2];
     std::vector<std::string> tokens{""};
-    for(int i = 3; i < argc; ++i)
+    for (int i = 3; i < argc; ++i)
     {
-        for(size_t j = 0; argv[i][j] != '\0'; ++j)
+        for (size_t j = 0; argv[i][j] != '\0'; ++j)
             tokens.back() += static_cast<char>(std::tolower(argv[i][j]));
         tokens.emplace_back("");
     }
@@ -38,6 +43,7 @@ int main(int argc, char** argv)
     else
     {
         std::println(std::cerr, "Unknown option '{}'.", option);
+        print_usage(argv);
         return -1;
     }
 
@@ -53,14 +59,14 @@ int main(int argc, char** argv)
     ifs.close();
     auto index = packme::unpack<txtfst::Index>(buf);
 
-    for(auto&& token : tokens)
+    for (auto&& token : tokens)
     {
         std::vector<std::string> result;
         if (search_title)
             result = index.search_title(token);
         else
             result = index.search_content(token);
-        if(!result.empty())
+        if (!result.empty())
         {
             std::println(std::cout, "{}:", token);
             for (auto&& r : result)

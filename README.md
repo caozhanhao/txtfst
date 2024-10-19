@@ -20,6 +20,7 @@ Options:
 ```
 
 ##### Example
+
 ```shell
 txtfst-build book.idx ./book/
 txtfst-search book.idx cnss meaning sentence
