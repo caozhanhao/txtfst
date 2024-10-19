@@ -2,12 +2,15 @@
 
 A txt searcher for a task in CNSS Recruit 2024.
 
-## Documentation
+## Usage
 
 ### txtfst-build
 
 ```shell
-Usage: ./txtfst-build [path to index] [path to library]
+Usage: ./txtfst-build [path to index] [path to library] [options]
+Options:
+   -n, --no-check            Enable unchecked tokenizer
+   -f, --filiter [num]       Drop tokens whose length < [num]
 ```
 
 ### txtfst-search
@@ -19,11 +22,30 @@ Options:
    -c, --content     Search in content
 ```
 
-##### Example
+### txtfst-tokenize
 
 ```shell
-txtfst-build book.idx ./book/
-txtfst-search book.idx cnss meaning sentence
+Usage: ./txtfst-tokenize [path to file] [options]
+Options:
+   -n, --no-check            Enable unchecked tokenizer
+   -f, --filiter [num]       Drop tokens whose length < [num]
+```
+
+## DEMO
+
+### Setup
+```shell
+git clone https://github.com/caozhanhao/txtfst.git
+cd txtfst
+mkdir build && cd build
+cmake .. && make
+```
+
+### Example
+```shell
+./txtfst-build book.idx ./book/ -f 3
+./txtfst-search book.idx cnss meaning sentence
+./txtfst-tokenize ./book/o/102000.txt -f 3 -n
 ```
 
 ## Task
