@@ -142,7 +142,7 @@ int main(int argc, char** argv)
   if(build_worker != 0)
   {
     chunk_perworker = pathes.size() / chunk_size / build_worker;
-    while (chunk_perworker == 0 && build_worker > 0)
+    while (chunk_perworker == 0 && build_worker > 1)
     {
       --build_worker;
       chunk_perworker = pathes.size() / chunk_size / build_worker;

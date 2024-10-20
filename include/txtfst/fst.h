@@ -57,9 +57,10 @@ namespace txtfst
   template<std::integral Output>
   struct CompiledFSTView
   {
-    std::vector<size_t> jump_table;
+    const uint64_t* jump_table;
     const char* fst{nullptr};
-    size_t size{0};
+    size_t fst_size{0};
+    size_t jump_table_size{0};
 
     std::optional<Output> get(const std::string& word) const
     {
@@ -81,14 +82,14 @@ namespace txtfst
   private:
     State<Output> get_state(size_t index) const
     {
-      assert(fst != nullptr && index < jump_table.size());
+      assert(fst != nullptr && index < jump_table_size);
       State<Output> dest;
       auto curr = fst + jump_table[index];
       size_t curr_len;
-      if(index != jump_table.size() - 1)
+      if(index != jump_table_size - 1)
         curr_len = fst + jump_table[index + 1] - curr;
       else
-        curr_len = size;
+        curr_len = fst + fst_size - curr;
 
       std::memcpy(&dest.id, curr, sizeof(dest.id));
       std::memcpy(&dest.final, curr + sizeof(dest.id), sizeof(dest.final));
@@ -106,36 +107,6 @@ namespace txtfst
   struct FST
   {
     std::vector<State<Output> > states;
-
-    [[nodiscard]] std::tuple<std::vector<char>, std::vector<size_t>> compile() const
-    {
-      std::vector<size_t> jump_table;
-      jump_table.resize(states.size());
-      std::vector<char> fst;
-      fst.reserve(states.size() * sizeof(State<Output>) * 2);
-      size_t offset = 0;
-      for(size_t i = 0; i < states.size(); ++i)
-      {
-        const auto& state = states[i];
-
-        size_t expected = sizeof(state.id) + sizeof(state.final) + state.trans.size() * sizeof(typename State<Output>::Arc);
-        if(fst.size() - offset < expected)
-          fst.resize(fst.size() + expected * 2);
-
-        jump_table[state.id] = offset;
-        std::memcpy(fst.data() + offset, &state.id, sizeof(state.id));
-        offset += sizeof(state.id);
-        std::memcpy(fst.data() + offset, &state.final, sizeof(state.final));
-        offset += sizeof(state.final);
-        for(auto&& arc : state.trans)
-        {
-          std::memcpy(fst.data() + offset, &arc, sizeof(arc));
-          offset += sizeof(arc);
-        }
-      }
-      fst.resize(offset);
-      return {fst, jump_table};
-    }
   };
 
   template<std::integral Output>
