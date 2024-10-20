@@ -8,15 +8,14 @@
 #include "txtfst/index.h"
 #include "txtfst/fst.h"
 
-constexpr size_t BUILD_WORKER = 16;
-constexpr size_t BUILDER_CHUNK_SIZE = 20000;
-
 void print_usage(char** argv)
 {
   std::println(std::cerr, "Usage: {} [path to index] [path to library] [options]", argv[0]);
   std::println(std::cerr, "Options:");
   std::println(std::cerr, "   -n, --no-check            Enable unchecked tokenizer", argv[0]);
   std::println(std::cerr, "   -f, --filiter [num]       Drop tokens whose length < [num]", argv[0]);
+  std::println(std::cerr, "   -j, --jobs [num]          Start n jobs, defaults to be 1", argv[0]);
+  std::println(std::cerr, "   -c, --chunk [num]         Set chunk size, defaults to be 5000", argv[0]);
 }
 
 int main(int argc, char** argv)
@@ -32,15 +31,17 @@ int main(int argc, char** argv)
 
   bool use_checked_tokenizer = true;
   int filter = -1;
+  size_t build_worker = 0;
+  size_t chunk_size = 5000;
 
   if (argc > 3)
   {
     std::vector<std::string> options;
-    for (size_t i = 0; i < argc; ++i)
+    for (size_t i = 3; i < argc; ++i)
       options.emplace_back(argv[i]);
-    for (size_t i = 3; i < options.size(); ++i)
+    for (size_t i = 0; i < options.size(); ++i)
     {
-      if (options[i] == "-f" || options[i] == "-f")
+      if (options[i] == "-f" || options[i] == "--filiter")
       {
         if (i + 1 >= options.size())
         {
@@ -50,6 +51,51 @@ int main(int argc, char** argv)
         try
         {
           filter = std::stoi(options[i + 1]);
+        }
+        catch (...)
+        {
+          std::println(std::cerr, "Expected a number after '{}', found '{}'.",
+                       options[i], options[i + 1]);
+          return -1;
+        }
+        ++i;
+      }
+      else if (options[i] == "-j" || options[i] == "--jobs")
+      {
+        if (i + 1 >= options.size())
+        {
+          std::println(std::cerr, "Expected a number after '{}'.", options[i]);
+          return -1;
+        }
+        try
+        {
+          if(int a = std::stoi(options[i + 1]) - 1; a < 0)
+          {
+            std::println(std::cerr, "Expected a non-zero positive number after '{}', found '{}'.",
+             options[i], options[i + 1]);
+            return -1;
+          }
+          else
+            build_worker = a;
+        }
+        catch (...)
+        {
+          std::println(std::cerr, "Expected a number after '{}', found '{}'.",
+                       options[i], options[i + 1]);
+          return -1;
+        }
+        ++i;
+      }
+      else if (options[i] == "-c" || options[i] == "--chunk")
+      {
+        if (i + 1 >= options.size())
+        {
+          std::println(std::cerr, "Expected a number after '{}'.", options[i]);
+          return -1;
+        }
+        try
+        {
+          chunk_size = std::stoul(options[i + 1]);
         }
         catch (...)
         {
@@ -92,15 +138,28 @@ int main(int argc, char** argv)
     if (entry.is_regular_file() && entry.path().extension() == ".txt")
       pathes.emplace_back(entry.path());
 
-  const size_t nwork = pathes.size() / BUILD_WORKER;
-  std::array<std::thread, BUILD_WORKER> workers;
-  std::array<txtfst::IndexBuilder, BUILD_WORKER + 1> builders;
+  size_t chunk_perworker = 0;
+  if(build_worker != 0)
+  {
+    chunk_perworker = pathes.size() / chunk_size / build_worker;
+    while (chunk_perworker == 0 && build_worker > 0)
+    {
+      --build_worker;
+      chunk_perworker = pathes.size() / chunk_size / build_worker;
+    }
+  }
+
+  std::vector<std::thread> workers;
+  workers.resize(build_worker);
+  std::vector<txtfst::IndexBuilder> builders;
+  builders.resize(build_worker + 1);
+  std::vector<size_t> curr_chunk;
+  curr_chunk.resize(build_worker + 1);
   std::mutex output_mtx;
   std::atomic<size_t> completed(0);
-  std::atomic<size_t> curr_chunk(0);
 
   auto add_book = [&, total = pathes.size()]
-  (const std::string& path, txtfst::IndexBuilder& builder)
+  (size_t worker_id, const std::string& path, txtfst::IndexBuilder& builder)
   {
     auto [title, content, errcnt]
         = txtfst::tokenize_book(path, filter, use_checked_tokenizer);
@@ -120,56 +179,67 @@ int main(int argc, char** argv)
     }
     builder.add_book(path, title, content);
     ++completed;
-    if (++curr_chunk > BUILDER_CHUNK_SIZE)
+    if (++curr_chunk[worker_id] == chunk_size)
     {
-      auto idx = packme::pack(builder.build());
+      auto idx = builder.build().compile();
       uint64_t idx_size = idx.size();
       output_mtx.lock();
       ofs.write(reinterpret_cast<char*>(&idx_size), sizeof(uint64_t));
       ofs.write(idx.data(), static_cast<std::streamsize>(idx.size()));
       output_mtx.unlock();
       builder = txtfst::IndexBuilder{};
-      curr_chunk = 0;
+      curr_chunk[worker_id] = 0;
     }
+    output_mtx.lock();
     std::print(std::cout, "\x1b[80D\x1b[K{}/{}", completed.load(), total);
+    output_mtx.unlock();
   };
 
-  for (size_t i = 0; i < BUILD_WORKER; ++i)
-  {
-    workers[i] = std::thread{
-      [i, nwork, &add_book, &pathes, &builders]
-      {
-        for (size_t j = i * nwork; j < (i + 1) * nwork; ++j)
-          add_book(pathes[j], builders[i]);
-      }
-    };
-  }
+  std::println(std::cout, "Start building index for '{}'.", path_to_library);
 
-  for (size_t i = BUILD_WORKER * nwork; i < pathes.size(); ++i)
-  {
-    add_book(pathes[i], builders[BUILD_WORKER]);
-    if (auto curr = completed.fetch_add(1); curr % 500 == 0)
-      std::print(std::cout, "\x1b[80D\x1b[K{}/{}", curr, pathes.size());
-  }
+  auto start = std::chrono::system_clock::now();
 
-  for (size_t i = 0; i < BUILD_WORKER; ++i)
+  if (chunk_perworker != 0)
   {
-    if (workers[i].joinable())
-      workers[i].join();
-  }
-
-  for (size_t i = 0; i < BUILD_WORKER + 1; ++i)
-  {
-    auto idx = packme::pack(builders[i].build());
-    if (!idx.empty())
+    for (size_t i = 0; i < build_worker; ++i)
     {
-      uint64_t idx_size = idx.size();
-      ofs.write(reinterpret_cast<char*>(&idx_size), sizeof(uint64_t));
-      ofs.write(idx.data(), static_cast<std::streamsize>(idx.size()));
+      workers[i] = std::thread{
+        [i, chunk_perworker, chunk_size, &add_book, &pathes, &builders]
+        {
+          for (size_t j = i * chunk_perworker * chunk_size; j < (i + 1) * chunk_perworker * chunk_size; ++j)
+            add_book(i, pathes[j], builders[i]);
+        }
+      };
+    }
+  }
+
+  if(build_worker * chunk_perworker * chunk_size < pathes.size())
+  {
+    for (size_t i = build_worker * chunk_perworker * chunk_size; i < pathes.size(); ++i)
+      add_book(build_worker, pathes[i], builders[build_worker]);
+    auto idx = builders[build_worker].build().compile();
+    uint64_t idx_size = idx.size();
+    output_mtx.lock();
+    ofs.write(reinterpret_cast<char*>(&idx_size), sizeof(uint64_t));
+    ofs.write(idx.data(), static_cast<std::streamsize>(idx.size()));
+    output_mtx.unlock();
+  }
+
+  if(chunk_perworker != 0)
+  {
+    for (size_t i = 0; i < build_worker; ++i)
+    {
+      if (workers[i].joinable())
+        workers[i].join();
     }
   }
 
   std::print(std::cout, "\x1b[80D\x1b[K{}/{}\n", pathes.size(), pathes.size());
+
+  auto end = std::chrono::system_clock::now();
+  std::println(std::cout, "Successfully built index at '{}', time: {} s", path_to_index,
+                static_cast<double>(std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()) /
+                1000.0);
 
   ofs.close();
   return 0;

@@ -9,6 +9,7 @@
 #include <unordered_set>
 #include <memory>
 #include <cassert>
+#include <sys/stat.h>
 
 #include "packme/packme.h"
 
@@ -54,25 +55,86 @@ namespace txtfst
   };
 
   template<std::integral Output>
-  struct FST
+  struct CompiledFSTView
   {
-    std::vector<State<Output> > states;
+    std::vector<size_t> jump_table;
+    const char* fst{nullptr};
+    size_t size{0};
 
     std::optional<Output> get(const std::string& word) const
     {
       Output output = 0;
-      const State<Output>* curr = &states[0];
+      auto curr = get_state(0);
       for (auto& ch : word)
       {
-        auto it = std::ranges::find(curr->trans, ch, [](auto&& t) { return t.label; });
-        if (it == curr->trans.cend())
+        auto it = std::ranges::find(curr.trans, ch, [](auto&& t) { return t.label; });
+        if (it == curr.trans.cend())
           return std::nullopt;
         output += it->output;
-        curr = &states[it->id];
+        curr = get_state(it->id);
       }
-      if (!curr->final)
+      if (!curr.final)
         return std::nullopt;
       return output;
+    }
+
+  private:
+    State<Output> get_state(size_t index) const
+    {
+      assert(fst != nullptr && index < jump_table.size());
+      State<Output> dest;
+      auto curr = fst + jump_table[index];
+      size_t curr_len;
+      if(index != jump_table.size() - 1)
+        curr_len = fst + jump_table[index + 1] - curr;
+      else
+        curr_len = size;
+
+      std::memcpy(&dest.id, curr, sizeof(dest.id));
+      std::memcpy(&dest.final, curr + sizeof(dest.id), sizeof(dest.final));
+      for(auto arc = curr + sizeof(dest.id) + sizeof(dest.final); arc < curr + curr_len;)
+      {
+        dest.trans.emplace_back();
+        std::memcpy(&dest.trans.back(), arc, sizeof(typename State<Output>::Arc));
+        arc += sizeof(typename State<Output>::Arc);
+      }
+      return dest;
+    }
+  };
+
+  template<std::integral Output>
+  struct FST
+  {
+    std::vector<State<Output> > states;
+
+    [[nodiscard]] std::tuple<std::vector<char>, std::vector<size_t>> compile() const
+    {
+      std::vector<size_t> jump_table;
+      jump_table.resize(states.size());
+      std::vector<char> fst;
+      fst.reserve(states.size() * sizeof(State<Output>) * 2);
+      size_t offset = 0;
+      for(size_t i = 0; i < states.size(); ++i)
+      {
+        const auto& state = states[i];
+
+        size_t expected = sizeof(state.id) + sizeof(state.final) + state.trans.size() * sizeof(typename State<Output>::Arc);
+        if(fst.size() - offset < expected)
+          fst.resize(fst.size() + expected * 2);
+
+        jump_table[state.id] = offset;
+        std::memcpy(fst.data() + offset, &state.id, sizeof(state.id));
+        offset += sizeof(state.id);
+        std::memcpy(fst.data() + offset, &state.final, sizeof(state.final));
+        offset += sizeof(state.final);
+        for(auto&& arc : state.trans)
+        {
+          std::memcpy(fst.data() + offset, &arc, sizeof(arc));
+          offset += sizeof(arc);
+        }
+      }
+      fst.resize(offset);
+      return {fst, jump_table};
     }
   };
 

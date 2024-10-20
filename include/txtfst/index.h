@@ -3,11 +3,12 @@
 #pragma once
 
 #include <string>
-#include <unordered_map>
 #include <vector>
 #include <ranges>
 #include <algorithm>
+#include <map>
 
+#include "packme/packme.h"
 #include "fst.h"
 
 namespace txtfst
@@ -24,17 +25,28 @@ namespace txtfst
     std::vector<BookEntry> books;
   };
 
-  struct Index
+  struct IndexView
   {
-    std::vector<std::string> names; // store all the names
-    std::vector<std::vector<size_t> > book_pathes; // store all the book pathes
-    FST<uint32_t> fst; // store all the tokens
-    std::vector<Entry> entries; // unique to a token
+    std::vector<std::string> names;
+    std::vector<std::vector<size_t> > book_pathes;
+    CompiledFSTView<uint32_t> fstview;
+    std::vector<Entry> entries;
+
+    explicit IndexView(std::string_view data)
+    {
+      uint64_t size;
+      std::memcpy(&size, data.data(), sizeof(uint64_t));
+      std::tie(names, book_pathes, entries, fstview.jump_table, fstview.size)
+          = packme::unpack<std::tuple<decltype(names), decltype(book_pathes), decltype(entries),
+            decltype(fstview.jump_table), decltype(fstview.size)> >
+          (std::string_view{data.data() + sizeof(uint64_t), size});
+      fstview.fst = data.data() + sizeof(uint64_t) + size;
+    }
 
     [[nodiscard]] std::vector<std::string> search_title(const std::string& token) const
     {
       std::vector<std::string> ret;
-      if (auto opt = fst.get(token); opt.has_value())
+      if (auto opt = fstview.get(token); opt.has_value())
       {
         auto sorted_books = entries[*opt].books;
         std::ranges::sort(sorted_books, std::less{}, [](auto&& r) { return r.title_freq; });
@@ -54,7 +66,7 @@ namespace txtfst
     [[nodiscard]] std::vector<std::string> search_content(const std::string& token) const
     {
       std::vector<std::string> ret;
-      if (auto opt = fst.get(token); opt.has_value())
+      if (auto opt = fstview.get(token); opt.has_value())
       {
         auto sorted_books = entries[*opt].books;
         std::ranges::sort(sorted_books, std::greater{}, [](auto&& r) { return r.content_freq; });
@@ -68,6 +80,27 @@ namespace txtfst
           ret.emplace_back(path);
         }
       }
+      return ret;
+    }
+  };
+
+  struct Index
+  {
+    std::vector<std::string> names; // store all the names
+    std::vector<std::vector<size_t> > book_pathes; // store all the book pathes
+    FST<uint32_t> fst; // store all the tokens
+    std::vector<Entry> entries; // unique to a token
+
+    [[nodiscard]] std::vector<char> compile() const
+    {
+      std::vector<char> ret;
+      auto [fstdata, jump_table] = fst.compile();
+      auto packed = packme::pack(std::make_tuple(names, book_pathes, entries, jump_table, fstdata.size()));
+      ret.resize(packed.size() + fstdata.size() + sizeof(uint64_t));
+      uint64_t size = packed.size();
+      std::memcpy(ret.data(), &size, sizeof(uint64_t));
+      std::memcpy(ret.data() + sizeof(uint64_t), packed.data(), packed.size());
+      std::memcpy(ret.data() + sizeof(uint64_t) + packed.size(), fstdata.data(), fstdata.size());
       return ret;
     }
   };
