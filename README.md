@@ -11,6 +11,8 @@ Usage: ./txtfst-build [path to index] [path to library] [options]
 Options:
    -n, --no-check            Enable unchecked tokenizer
    -f, --filiter [num]       Drop tokens whose length < [num]
+   -j, --jobs [num]          Start n jobs, defaults to be 1
+   -c, --chunk [num]         Set chunk size, defaults to be 5000
 ```
 
 ### txtfst-search
@@ -18,8 +20,9 @@ Options:
 ```shell
 Usage: ./txtfst-search [path to index] [options] [tokens]
 Options:
-   -t, --title       Search in title
-   -c, --content     Search in content
+   -t, --title            Search in title
+   -c, --content          Search in content
+   -j, --jobs [num]       Start n jobs, defaults to be 1
 ```
 
 ### txtfst-tokenize
