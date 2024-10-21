@@ -25,7 +25,7 @@ namespace txtfst
     std::vector<BookEntry> books;
   };
 
-  struct EntriesView
+  struct CompiledEntriesView
   {
     const uint64_t* jump_table{};
     size_t jump_table_size{};
@@ -33,27 +33,27 @@ namespace txtfst
     size_t size{};
   };
 
-  struct NamesView
+  struct CompiledNamesView
   {
     const uint64_t* jump_table{};
     size_t jump_table_size{};
     const char* names{nullptr};
   };
 
-  struct PathesView
+  struct CompiledPathsView
   {
     const uint64_t* jump_table{};
     size_t jump_table_size{};
-    const uint32_t* pathes{nullptr};
+    const uint32_t* paths{nullptr};
     size_t size{};
   };
 
   struct IndexView
   {
-    CompiledFSTView<uint32_t> fstview;
-    EntriesView entries;
-    PathesView book_pathes;
-    NamesView names;
+    CompiledFSTView<uint32_t> fst_view;
+    CompiledEntriesView entries_view;
+    CompiledPathsView paths_view;
+    CompiledNamesView names_view;
 
     explicit IndexView(std::string_view data)
     {
@@ -64,24 +64,24 @@ namespace txtfst
           (std::string_view{data.data() + sizeof(uint64_t), size});
       size_t offset = size + sizeof(uint64_t);
 
-      names.jump_table = reinterpret_cast<const uint64_t*>(data.data() + offset + ntpos);
-      names.jump_table_size = ntlen;
-      names.names = const_cast<char*>(data.data() + offset + ntpos + ntlen * sizeof(uint64_t));
+      names_view.jump_table = reinterpret_cast<const uint64_t*>(data.data() + offset + ntpos);
+      names_view.jump_table_size = ntlen;
+      names_view.names = const_cast<char*>(data.data() + offset + ntpos + ntlen * sizeof(uint64_t));
 
-      book_pathes.jump_table = reinterpret_cast<const uint64_t*>(data.data() + offset + ptpos);
-      book_pathes.jump_table_size = ptlen;
-      book_pathes.pathes = reinterpret_cast<const uint32_t*>(data.data() + offset + ptpos + ptlen * sizeof(uint64_t));
-      book_pathes.size = etpos - ptpos - ptlen * sizeof(uint64_t);
+      paths_view.jump_table = reinterpret_cast<const uint64_t*>(data.data() + offset + ptpos);
+      paths_view.jump_table_size = ptlen;
+      paths_view.paths = reinterpret_cast<const uint32_t*>(data.data() + offset + ptpos + ptlen * sizeof(uint64_t));
+      paths_view.size = etpos - ptpos - ptlen * sizeof(uint64_t);
 
-      entries.jump_table = reinterpret_cast<const uint64_t*>(data.data() + offset + etpos);
-      entries.jump_table_size = etlen;
-      entries.books = reinterpret_cast<const BookEntry*>(data.data() + offset + etpos + etlen * sizeof(uint64_t));
-      entries.size = ftpos - etpos - etlen * sizeof(uint64_t);
+      entries_view.jump_table = reinterpret_cast<const uint64_t*>(data.data() + offset + etpos);
+      entries_view.jump_table_size = etlen;
+      entries_view.books = reinterpret_cast<const BookEntry*>(data.data() + offset + etpos + etlen * sizeof(uint64_t));
+      entries_view.size = ftpos - etpos - etlen * sizeof(uint64_t);
 
-      fstview.jump_table = reinterpret_cast<const uint64_t*>(data.data() + offset + ftpos);
-      fstview.jump_table_size = ftlen;
-      fstview.fst = data.data() + offset + ftpos + ftlen * sizeof(uint64_t);
-      fstview.fst_size = data.size() - offset - ftpos - ftlen * sizeof(uint64_t);
+      fst_view.jump_table = reinterpret_cast<const uint64_t*>(data.data() + offset + ftpos);
+      fst_view.jump_table_size = ftlen;
+      fst_view.fst = data.data() + offset + ftpos + ftlen * sizeof(uint64_t);
+      fst_view.fst_size = data.size() - offset - ftpos - ftlen * sizeof(uint64_t);
     }
 
     [[nodiscard]] std::vector<std::string> search_title(const std::string& token) const
@@ -99,37 +99,40 @@ namespace txtfst
     [[nodiscard]] std::vector<std::string> search(const std::string& token, Proj&& proj) const
     {
       std::vector<std::string> ret;
-      if (auto opt = fstview.get(token); opt.has_value())
+      if (auto opt = fst_view.get(token); opt.has_value())
       {
-        std::vector<BookEntry> sorted_books;
+        std::vector<BookEntry> entries;
 
-        auto ecurr = entries.books + entries.jump_table[*opt] / sizeof(BookEntry);
+        auto ecurr = entries_view.books + entries_view.jump_table[*opt] / sizeof(BookEntry);
         size_t elen = 0;
-        if (*opt != entries.jump_table_size - 1)
-          elen = entries.books + entries.jump_table[*opt + 1] / sizeof(BookEntry) - ecurr;
+        if (*opt != entries_view.jump_table_size - 1)
+          elen = entries_view.books + entries_view.jump_table[*opt + 1] / sizeof(BookEntry) - ecurr;
         else
-          elen = entries.books + entries.size / sizeof(BookEntry) - ecurr;
+          elen = entries_view.books + entries_view.size / sizeof(BookEntry) - ecurr;
         for (size_t i = 0; i < elen; ++i)
-          sorted_books.emplace_back(*(ecurr + i));
-        std::ranges::sort(sorted_books, std::less{}, std::forward<Proj>(proj));
-        for (auto& r : sorted_books)
+          entries.emplace_back(*(ecurr + i));
+        // We use different chunks to store fst, so the sort is meaningless.
+        // std::ranges::sort(entries, std::greater{}, std::forward<Proj>(proj));
+        for (auto& entry : entries)
         {
-          if (proj(r) == 0) break;
-          std::vector<size_t> pathes;
-          auto pcurr = book_pathes.pathes + book_pathes.jump_table[r.idx] / sizeof(uint32_t);
+          // Since we didn't sort, we need to `continue` rather than `break`.
+          if (proj(entry) == 0)
+            continue;
+          std::vector<size_t> paths;
+          auto pcurr = paths_view.paths + paths_view.jump_table[entry.idx] / sizeof(uint32_t);
           size_t plen = 0;
-          if (r.idx != book_pathes.jump_table_size - 1)
-            plen = book_pathes.pathes + book_pathes.jump_table[r.idx + 1] / sizeof(uint32_t) - pcurr;
+          if (entry.idx != paths_view.jump_table_size - 1)
+            plen = paths_view.paths + paths_view.jump_table[entry.idx + 1] / sizeof(uint32_t) - pcurr;
           else
-            plen = book_pathes.pathes + book_pathes.size / sizeof(uint32_t) - pcurr;
+            plen = paths_view.paths + paths_view.size / sizeof(uint32_t) - pcurr;
           for (size_t i = 0; i < plen; ++i)
-            pathes.emplace_back(*(pcurr + i));
+            paths.emplace_back(*(pcurr + i));
 
           std::string path;
 
-          for(auto&& r : pathes)
+          for(auto&& name_idx : paths)
           {
-            auto ncurr = names.names + names.jump_table[r];
+            auto ncurr = names_view.names + names_view.jump_table[name_idx];
             for(;*ncurr != '\0'; ++ncurr)
               path += *ncurr;
             path += "/";
@@ -146,7 +149,7 @@ namespace txtfst
   {
     FST<uint32_t> fst; // store all the tokens
     std::vector<Entry> entries; // unique to a token
-    std::vector<std::vector<uint32_t> > book_pathes; // store all the book pathes
+    std::vector<std::vector<uint32_t> > book_paths; // store all the book paths
     std::vector<std::string> names; // store all the names
 
     [[nodiscard]] std::vector<char> compile() const
@@ -165,22 +168,22 @@ namespace txtfst
       }
       std::memmove(ret.data(), names_table.data(), names_table.size() * sizeof(uint64_t));
 
-      size_t pathes_table_pos = ret.size();
-      std::vector<uint64_t> pathes_table;
-      pathes_table.resize(book_pathes.size());
-      ret.resize(ret.size() + pathes_table.size() * sizeof(uint64_t));
+      size_t paths_table_pos = ret.size();
+      std::vector<uint64_t> paths_table;
+      paths_table.resize(book_paths.size());
+      ret.resize(ret.size() + paths_table.size() * sizeof(uint64_t));
 
       offset = ret.size();
       size_t path_offset = 0;
-      for (size_t i = 0; i < book_pathes.size(); ++i)
+      for (size_t i = 0; i < book_paths.size(); ++i)
       {
-        pathes_table[i] = ret.size() - offset;
-        ret.resize(ret.size() + book_pathes[i].size() * sizeof(uint32_t));
-        std::memmove(ret.data() + offset + path_offset, book_pathes[i].data(),
-                     sizeof(uint32_t) * book_pathes[i].size());
-        path_offset += sizeof(uint32_t) * book_pathes[i].size();
+        paths_table[i] = ret.size() - offset;
+        ret.resize(ret.size() + book_paths[i].size() * sizeof(uint32_t));
+        std::memmove(ret.data() + offset + path_offset, book_paths[i].data(),
+                     sizeof(uint32_t) * book_paths[i].size());
+        path_offset += sizeof(uint32_t) * book_paths[i].size();
       }
-      std::memmove(ret.data() + pathes_table_pos, pathes_table.data(), pathes_table.size() * sizeof(uint64_t));
+      std::memmove(ret.data() + paths_table_pos, paths_table.data(), paths_table.size() * sizeof(uint64_t));
 
       size_t entries_table_pos = ret.size();
       std::vector<uint64_t> entries_table;
@@ -224,7 +227,7 @@ namespace txtfst
       }
       std::memmove(ret.data() + fst_table_pos, fst_table.data(), fst_table.size() * sizeof(uint64_t));
 
-      auto packed = packme::pack(std::make_tuple(0, names_table.size(), pathes_table_pos, pathes_table.size(),
+      auto packed = packme::pack(std::make_tuple(0, names_table.size(), paths_table_pos, paths_table.size(),
                                                  entries_table_pos, entries_table.size(), fst_table_pos,
                                                  fst_table.size()));
       size_t packed_size = packed.size();
@@ -243,7 +246,7 @@ namespace txtfst
   class IndexBuilder
   {
     std::vector<std::string> names;
-    std::vector<std::vector<uint32_t> > book_pathes;
+    std::vector<std::vector<uint32_t> > book_paths;
     std::vector<Entry> merged_entries;
     std::map<std::string, std::map<size_t, BookEntry> > unmerged_tokens;
     FSTBuilder<uint32_t> fst_builder;
@@ -253,7 +256,7 @@ namespace txtfst
                            const std::vector<std::string>& title,
                            const std::vector<std::string>& content)
     {
-      book_pathes.emplace_back();
+      book_paths.emplace_back();
       for (auto&& name : path | std::views::split('/'))
       {
         auto sv = std::string_view{name};
@@ -261,13 +264,13 @@ namespace txtfst
         if (it == names.end())
         {
           names.emplace_back(sv);
-          book_pathes.back().emplace_back(names.size() - 1);
+          book_paths.back().emplace_back(names.size() - 1);
         }
         else
-          book_pathes.back().emplace_back(it - names.cbegin());
+          book_paths.back().emplace_back(it - names.cbegin());
       }
 
-      auto curr_book = book_pathes.size() - 1;
+      auto curr_book = book_paths.size() - 1;
       for (auto&& token : title)
       {
         auto& curr_entry = unmerged_tokens[token];
@@ -298,7 +301,7 @@ namespace txtfst
           book_entries.emplace_back(t.second);
         merged_entries.emplace_back(std::move(book_entries));
       }
-      return Index{fst_builder.build(), std::move(merged_entries), std::move(book_pathes), std::move(names)};
+      return Index{fst_builder.build(), std::move(merged_entries), std::move(book_paths), std::move(names)};
     }
   };
 }
