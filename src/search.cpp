@@ -36,7 +36,7 @@ int main(int argc, char** argv)
   size_t argpos = 2;
   for (; argpos < argc; ++argpos)
   {
-    if(argv[argpos][0] != '-' && argpos + 1 < argc && argv[argpos + 1][0] != '-') break;
+    if(argv[argpos][0] != '-' && argv[argpos - 1][1] != 'j') break;
     options.emplace_back(argv[argpos]);
   }
   for (size_t i = 0; i < options.size(); ++i)

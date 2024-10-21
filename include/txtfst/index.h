@@ -105,10 +105,10 @@ namespace txtfst
 
         auto ecurr = entries.books + entries.jump_table[*opt] / sizeof(BookEntry);
         size_t elen = 0;
-        if (*opt != entries.size - 1)
+        if (*opt != entries.jump_table_size - 1)
           elen = entries.books + entries.jump_table[*opt + 1] / sizeof(BookEntry) - ecurr;
         else
-          elen = entries.books + entries.size - ecurr;
+          elen = entries.books + entries.size / sizeof(BookEntry) - ecurr;
         for (size_t i = 0; i < elen; ++i)
           sorted_books.emplace_back(*(ecurr + i));
         std::ranges::sort(sorted_books, std::less{}, std::forward<Proj>(proj));
@@ -118,10 +118,10 @@ namespace txtfst
           std::vector<size_t> pathes;
           auto pcurr = book_pathes.pathes + book_pathes.jump_table[r.idx] / sizeof(uint32_t);
           size_t plen = 0;
-          if (r.idx != book_pathes.size - 1)
+          if (r.idx != book_pathes.jump_table_size - 1)
             plen = book_pathes.pathes + book_pathes.jump_table[r.idx + 1] / sizeof(uint32_t) - pcurr;
           else
-            plen = book_pathes.pathes + book_pathes.size - pcurr;
+            plen = book_pathes.pathes + book_pathes.size / sizeof(uint32_t) - pcurr;
           for (size_t i = 0; i < plen; ++i)
             pathes.emplace_back(*(pcurr + i));
 
